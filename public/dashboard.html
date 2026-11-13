@@ -294,7 +294,7 @@
         <div id="manageView" style="display: none;">
             <div class="top-bar" style="align-items: center;">
                 <div style="display: flex; align-items: center; gap: 15px;">
-                    <img id="manageBotAvatar" class="bot-avatar" src="" alt="Avatar" style="width: 60px; height: 60px;">
+                    <img id="manageBotAvatar" class="bot-avatar" src="https://cdn.discordapp.com/embed/avatars/0.png" alt="Avatar" style="width: 60px; height: 60px;">
                     <div>
                         <h1 id="manageBotTitle">שם הבוט</h1>
                         <p id="manageBotFolder" style="color: var(--text-muted); margin: 4px 0 0 0; font-size: 12px;"></p>
@@ -320,7 +320,7 @@
                     </form>
                 </div>
 
-                <!-- חלון ה-Console החי -->
+                <!-- חלון ה-Console -->
                 <div style="flex: 1; min-width: 320px; display: flex; flex-direction: column;">
                     <h3 style="margin: 0 0 5px 0; color: var(--success); font-size: 16px;">💻 Live Console Output</h3>
                     <div id="consoleOutput" class="console-box">ממתין לנתוני הפעלה מהשרת...</div>
@@ -371,7 +371,7 @@
 
             allBots.forEach(bot => {
                 const isRunning = bot.status === 'running';
-                const avatarUrl = bot.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
+                const avatarUrl = bot.avatar && bot.avatar.startsWith('http') ? bot.avatar : 'https://cdn.discordapp.com/embed/avatars/0.png';
                 const card = document.createElement('div');
                 card.className = 'bot-card';
                 card.onclick = () => openManageBot(bot.id);
@@ -426,7 +426,7 @@
 
             currentBotId = id;
             document.getElementById('manageBotTitle').innerText = bot.name;
-            document.getElementById('manageBotAvatar').src = bot.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
+            document.getElementById('manageBotAvatar').src = (bot.avatar && bot.avatar.startsWith('http')) ? bot.avatar : 'https://cdn.discordapp.com/embed/avatars/0.png';
             document.getElementById('manageBotFolder').innerText = `נתיב: extracted_bots/${bot.id}`;
             document.getElementById('botToken').value = bot.token || '';
             document.getElementById('botFile').value = '';
@@ -466,7 +466,7 @@
             };
 
             fetchLogs();
-            consoleInterval = setInterval(fetchLogs, 800); // מעדכן כל 0.8 שניות לשידור חי מהיר!
+            consoleInterval = setInterval(fetchLogs, 800);
         }
 
         document.getElementById('deployForm').addEventListener('submit', async (e) => {
@@ -494,6 +494,7 @@
                 if (data.success) {
                     alert('הפעולה התחילה! תראה את ההתקדמות בלייב בחלון ה-Console משמאל.');
                     loadBots();
+                    setTimeout(loadBots, 3000); // טעינה מחדש אחרי 3 שניות כדי לעדכן תמונה
                 } else {
                     alert('שגיאה: ' + data.message);
                 }
