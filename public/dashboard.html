@@ -2,133 +2,308 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>ניהול בוטים 24/7</title>
+    <title>miahosting - פאנל ניהול בוטים</title>
     <style>
-        /* כאן אפשר לעצב מחדש את נראות הדשבורד אם תרצה */
-        body { background: #1e1f22; color: #dbdee1; font-family: system-ui, sans-serif; margin: 0; padding: 20px; }
-        .container { max-width: 900px; margin: 0 auto; }
-        .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #3f4147; padding-bottom: 15px; margin-bottom: 20px; }
-        .card { background: #2b2d31; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        input[type="text"], input[type="password"], input[type="file"] { width: 100%; padding: 10px; margin: 8px 0 15px; background: #1e1f22; border: 1px solid #3f4147; color: #fff; border-radius: 5px; box-sizing: border-box; }
-        .btn { padding: 8px 16px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: #fff; }
-        .btn-primary { background: #5865f2; }
-        .btn-success { background: #23a559; }
-        .btn-warning { background: #f0b232; color: #000; }
-        .btn-danger { background: #da373c; }
-        .bot-item { background: #313338; padding: 15px; border-radius: 6px; margin-bottom: 12px; }
-        .bot-top { display: flex; justify-content: space-between; align-items: center; }
-        .status { padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; }
-        .online { background: rgba(35, 165, 89, 0.2); color: #23a559; }
-        .offline { background: rgba(218, 55, 60, 0.2); color: #da373c; }
-        .logs { background: #111214; color: #00ff66; font-family: monospace; font-size: 12px; padding: 10px; border-radius: 4px; margin-top: 10px; max-height: 120px; overflow-y: auto; direction: ltr; text-align: left; }
+        :root {
+            --bg-main: #1e1f22;
+            --bg-sidebar: #2b2d31;
+            --bg-card: #313338;
+            --accent: #5865f2;
+            --accent-hover: #4752c4;
+            --text-main: #dbdee1;
+            --text-muted: #949ba4;
+            --danger: #f23f42;
+            --success: #23a55a;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            margin: 0;
+            display: flex;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        /* Sidebar */
+        .sidebar {
+            width: 260px;
+            background-color: var(--bg-sidebar);
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-shadow: 4px 0 15px rgba(0,0,0,0.2);
+            animation: slideInLeft 0.5s ease-out;
+        }
+
+        .logo-area h2 {
+            color: var(--accent);
+            margin: 0 0 5px 0;
+            font-size: 22px;
+        }
+
+        .logo-area p {
+            color: var(--text-muted);
+            font-size: 13px;
+            margin: 0;
+        }
+
+        .nav-links {
+            list-style: none;
+            padding: 0;
+            margin-top: 30px;
+        }
+
+        .nav-links li {
+            padding: 12px 15px;
+            border-radius: 8px;
+            background-color: var(--bg-card);
+            color: #fff;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .footer-brand {
+            text-align: center;
+            font-size: 13px;
+            color: var(--text-muted);
+            border-top: 1px solid #3f4147;
+            padding-top: 15px;
+        }
+
+        .footer-brand span {
+            color: var(--accent);
+            font-weight: bold;
+        }
+
+        /* Main Content */
+        .main-content {
+            flex: 1;
+            padding: 40px;
+            overflow-y: auto;
+            animation: fadeIn 0.6s ease-in-out;
+        }
+
+        h1 {
+            margin-top: 0;
+            font-size: 26px;
+        }
+
+        .card {
+            background-color: var(--bg-sidebar);
+            padding: 25px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            margin-bottom: 25px;
+            transition: transform 0.3s ease;
+        }
+
+        .card:hover {
+            transform: translateY(-3px);
+        }
+
+        input[type="file"], input[type="text"] {
+            width: 100%;
+            padding: 12px;
+            margin: 10px 0 20px 0;
+            background-color: var(--bg-main);
+            border: 1px solid #3f4147;
+            border-radius: 8px;
+            color: #fff;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--accent);
+        }
+
+        button {
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 15px;
+            transition: background-color 0.2s, transform 0.1s;
+        }
+
+        button:hover {
+            background-color: var(--accent-hover);
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        /* Bots List Grid */
+        .bots-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .bot-card {
+            background-color: var(--bg-card);
+            border-radius: 10px;
+            padding: 20px;
+            border: 1px solid #3f4147;
+            position: relative;
+            animation: popUp 0.4s ease-out;
+        }
+
+        .bot-status {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background-color: var(--success);
+            border-radius: 50%;
+            margin-left: 8px;
+            box-shadow: 0 0 8px var(--success);
+        }
+
+        .bot-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn-danger {
+            background-color: var(--danger);
+        }
+        .btn-danger:hover {
+            background-color: #d83c3e;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes slideInLeft {
+            from { transform: translateX(-100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes popUp {
+            from { transform: scale(0.9); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
     </style>
 </head>
 <body>
-    <div class="container">
-        <div class="header">
-            <h2>פאנל אירוח בוטים (מחובר: mia)</h2>
-            <button class="btn btn-danger" onclick="logout()">התנתק</button>
-        </div>
 
+    <!-- תפריט צדדי -->
+    <div class="sidebar">
+        <div class="logo-area">
+            <h2>miahosting</h2>
+            <p>פאנל ניהול בוטים חכם</p>
+            <ul class="nav-links">
+                <li>🏠 מסך הבית</li>
+            </ul>
+        </div>
+        <div class="footer-brand">
+            Powered by <span>miahosting</span>
+        </div>
+    </div>
+
+    <!-- תוכן מרכזי -->
+    <div class="main-content">
+        <h1>הבוטים שלי</h1>
+        
+        <!-- טופס העלאת בוט חדש -->
         <div class="card">
-            <h3>הוספת בוט חדש</h3>
-            <form id="createForm">
-                <label>שם הבוט (לזיהוי בפאנל):</label>
-                <input type="text" id="botName" placeholder="לדוגמה: בוט טיקטים" required>
+            <h3>העלאת בוט חדש (קובץ ZIP + Token)</h3>
+            <form id="uploadForm">
+                <label>שם הבוט:</label>
+                <input type="text" id="botName" placeholder="לדוגמה: MyBot" required>
+                
+                <label>קובץ הבוט (ZIP שכולל package.json וקובץ הפעלה):</label>
+                <input type="file" id="botFile" accept=".zip" required>
                 
                 <label>Discord Bot Token:</label>
-                <input type="password" id="botToken" placeholder="הדבק כאן את הטוקן..." required>
+                <input type="text" id="botToken" placeholder="MTEx... (הכנס כאן את הטוקן)" required>
                 
-                <label>קבצי הבוט (קובץ ZIP או מספר קבצים):</label>
-                <input type="file" id="botFiles" multiple required>
-                
-                <button type="submit" class="btn btn-primary" id="submitBtn">העלה והפעל בוט</button>
+                <button type="submit">העלה והפעל בוט</button>
             </form>
         </div>
 
-        <div class="card">
-            <h3>הבוטים שלך</h3>
-            <div id="botsList">טוען...</div>
+        <!-- רשימת הבוטים הפעילים -->
+        <h3>בוטים פעילים במערכת</h3>
+        <div id="botsList" class="bots-grid">
+            <!-- הבוטים יטענו לכאן אוטומטית -->
         </div>
     </div>
 
     <script>
         async function loadBots() {
             const res = await fetch('/api/bots');
-            if (res.status === 401) return window.location.href = '/login.html';
             const bots = await res.json();
+            const container = document.getElementById('botsList');
+            container.innerHTML = '';
             
-            const list = document.getElementById('botsList');
             if (bots.length === 0) {
-                list.innerHTML = '<p>אין בוטים פעילים כרגע.</p>';
+                container.innerHTML = '<p style="color: var(--text-muted);">אין כרגע בוטים פעילים. העלה בוט חדש למעלה!</p>';
                 return;
             }
 
-            list.innerHTML = bots.map(bot => `
-                <div class="bot-item">
-                    <div class="bot-top">
-                        <div>
-                            <strong>${bot.name}</strong>
-                            <span class="status ${bot.isRunning ? 'online' : 'offline'}">
-                                ${bot.isRunning ? 'פעיל 24/7' : 'כבוי'}
-                            </span>
-                        </div>
-                        <div>
-                            <button class="btn ${bot.isRunning ? 'btn-warning' : 'btn-success'}" onclick="toggleBot('${bot.id}')">
-                                ${bot.isRunning ? 'כבה בוט' : 'הפעל בוט'}
-                            </button>
-                            <button class="btn btn-danger" onclick="deleteBot('${bot.id}')">מחק</button>
-                        </div>
+            bots.forEach(bot => {
+                const card = document.createElement('div');
+                card.className = 'bot-card';
+                card.innerHTML = `
+                    <div style="display: flex; align-items: center; justify-content: space-between;">
+                        <h4 style="margin: 0; font-size: 18px;">${bot.name}</h4>
+                        <span><span class="bot-status"></span> פעיל 24/7</span>
                     </div>
-                    <div class="logs">${(bot.logs || []).join('<br>') || 'אין לוגים להצגה...'}</div>
-                </div>
-            `).join('');
+                    <div class="bot-actions">
+                        <button class="btn-danger" onclick="deleteBot('${bot.id}')">מחק והפסק</button>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
         }
 
-        document.getElementById('createForm').addEventListener('submit', async (e) => {
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const btn = document.getElementById('submitBtn');
-            btn.disabled = true;
-            btn.innerText = 'מתקין חבילות ומפעיל...';
+            const name = document.getElementById('botName').value;
+            const fileInput = document.getElementById('botFile').files[0];
+            const token = document.getElementById('botToken').value;
 
             const formData = new FormData();
-            formData.append('name', document.getElementById('botName').value);
-            formData.append('token', document.getElementById('botToken').value);
-            
-            const files = document.getElementById('botFiles').files;
-            for (let i = 0; i < files.length; i++) {
-                formData.append('files', files[i]);
-            }
+            formData.append('name', name);
+            formData.append('file', fileInput);
+            formData.append('token', token);
 
-            const res = await fetch('/api/bots', { method: 'POST', body: formData });
-            if (res.ok) {
-                document.getElementById('createForm').reset();
+            const res = await fetch('/api/bots/upload', {
+                method: 'POST',
+                body: formData
+            });
+
+            const data = await res.json();
+            if (data.success) {
+                alert('הבוט הועלה והופעל בהצלחה!');
+                document.getElementById('uploadForm').reset();
                 loadBots();
             } else {
-                alert('אירעה שגיאה בהעלאת הבוט');
+                alert('שגיאה: ' + data.message);
             }
-            btn.disabled = false;
-            btn.innerText = 'העלה והפעל בוט';
         });
 
-        async function toggleBot(id) {
-            await fetch(`/api/bots/${id}/toggle`, { method: 'POST' });
-            loadBots();
-        }
-
         async function deleteBot(id) {
-            if (!confirm('בטוח שברצונך למחוק את הבוט לצמיתות?')) return;
+            if (!confirm('האם אתה בטוח שברצונך למחוק את הבוט?')) return;
             await fetch(`/api/bots/${id}`, { method: 'DELETE' });
             loadBots();
         }
 
-        async function logout() {
-            await fetch('/api/logout', { method: 'POST' });
-            window.location.href = '/login.html';
-        }
-
         loadBots();
-        setInterval(loadBots, 4000); // <--- כאן קובעים באיזו תדירות (במילישניות) הדשבורד מתרענן אוטומטית (4000 = 4 שניות)
     </script>
 </body>
 </html>
