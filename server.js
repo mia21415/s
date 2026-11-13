@@ -5,6 +5,7 @@ const AdmZip = require('adm-zip');
 const fs = require('fs');
 const path = require('path');
 const { spawn } = require('child_process');
+const https = require('https');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -41,10 +42,10 @@ function saveBots(bots) {
     fs.writeFileSync(BOTS_FILE, JSON.stringify(bots, null, 2));
 }
 
-// התחברות
+// התחברות (תומך גם ב-mia/2234 וגם ב-Trigger/8921)
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === 'mia' && password === '2234') {
+    if ((username === 'mia' && password === '2234') || (username === 'Trigger' && password === '8921')) {
         req.session.authenticated = true;
         res.json({ success: true });
     } else {
@@ -57,7 +58,6 @@ app.use('/dashboard.html', (req, res, next) => {
     else res.redirect('/login.html');
 });
 
-// קבלת רשימת בוטים
 app.get('/api/bots', (req, res) => {
     const bots = getBots().map(b => ({
         ...b,
@@ -67,7 +67,6 @@ app.get('/api/bots', (req, res) => {
     res.json(bots);
 });
 
-// יצירת בוט חדש עם תיקייה
 app.post('/api/bots/create', (req, res) => {
     const { name } = req.body;
     if (!name) return res.json({ success: false, message: 'חסר שם' });
@@ -86,13 +85,11 @@ app.post('/api/bots/create', (req, res) => {
     res.json({ success: true, bot: newBot });
 });
 
-// לוגים חיים
 app.get('/api/bots/:id/logs', (req, res) => {
     const botId = req.params.id;
     res.json({ logs: botLogs[botId] || 'No logs yet...' });
 });
 
-// שמירת טוקן והעלאת קבצים בצורה אסינכרונית מהירה לשידור חי בלוגים
 app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
     const botId = req.params.id;
     const { token } = req.body;
@@ -101,12 +98,10 @@ app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
     const bots = getBots();
     const botIndex = bots.findIndex(b => b.id === botId);
     if (botIndex === -1 || !token) {
-        return res.json({ success: false, message: 'נתונים חסרים' });
+        return res.json({ success: false, message: 'נתונים חסרים (חובה להזין Token)' });
     }
 
-    res.json({ success: true }); // מחזיר תשובה מיד כדי שהאתר לא יתקע!
-
-    // ממשיך לבצע ברקע ומדפיס ללוגים בלייב
+    res.json({ success: true });
     runDeployProcess(botId, botIndex, file, token);
 });
 
@@ -119,14 +114,14 @@ function runDeployProcess(botId, botIndex, file, token) {
         delete activeProcesses[botId];
     }
 
-    botLogs[botId] = `[System] Starting deployment process...\n`;
+    botLogs[botId] = `[System] Saving settings and preparing bot...\n`;
 
     try {
         if (file) {
             const zip = new AdmZip(file.path);
             zip.extractAllTo(bot.folder, true);
             fs.unlinkSync(file.path);
-            botLogs[botId] += `[System] ZIP extracted successfully.\n`;
+            botLogs[botId] += `[System] New ZIP file extracted successfully.\n`;
 
             const packageJsonPath = path.join(bot.folder, 'package.json');
             let mainFile = 'index.js';
@@ -141,24 +136,21 @@ function runDeployProcess(botId, botIndex, file, token) {
         bot.token = token;
         saveBots(bots);
 
-        // התקנת חבילות ברקע עם הצגת פלט חי בלוגים
-        botLogs[botId] += `[System] Running npm install (this may take a few seconds)...\n`;
-        
-        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-        const npmProcess = spawn(npmCmd, ['install'], { cwd: bot.folder });
-
-        npmProcess.stdout.on('data', (data) => {
-            botLogs[botId] += data.toString();
+        // שליפת תמונת פרופיל ישירות מדיסקורד באמצעות https המובנה ב-Node
+        fetchBotAvatar(token, (avatarUrl) => {
+            if (avatarUrl) {
+                const latestBots = getBots();
+                const target = latestBots.find(b => b.id === botId);
+                if (target) {
+                    target.avatar = avatarUrl;
+                    saveBots(latestBots);
+                }
+            }
         });
 
-        npmProcess.stderr.on('data', (data) => {
-            botLogs[botId] += data.toString();
-        });
+        const hasNodeModules = fs.existsSync(path.join(bot.folder, 'node_modules'));
 
-        npmProcess.on('close', (code) => {
-            botLogs[botId] += `[System] npm install finished with code ${code}.\n`;
-            
-            // יצירת עטיפת הרצה
+        const startExecution = () => {
             const runnerPath = path.join(bot.folder, '_mia_runner.js');
             const wrapperContent = `
 const { Client } = require('discord.js');
@@ -178,39 +170,64 @@ require('./${bot.mainFile}');
 `;
             fs.writeFileSync(runnerPath, wrapperContent);
 
-            // שליפת אוואטר של הבוט
-            fetchBotAvatar(token).then(avatarUrl => {
-                if (avatarUrl) {
-                    const latestBots = getBots();
-                    const target = latestBots.find(b => b.id === botId);
-                    if (target) {
-                        target.avatar = avatarUrl;
-                        saveBots(latestBots);
-                    }
-                }
-            });
-
-            botLogs[botId] += `[System] Starting bot process now...\n`;
+            botLogs[botId] += `[System] Starting bot process...\n`;
             startBotProcess(botId, bot.folder, '_mia_runner.js', token);
-        });
+        };
+
+        if (file && !hasNodeModules) {
+            botLogs[botId] += `[System] Running npm install...\n`;
+            const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+            const npmProcess = spawn(npmCmd, ['install'], { cwd: bot.folder });
+
+            npmProcess.stdout.on('data', (data) => { botLogs[botId] += data.toString(); });
+            npmProcess.stderr.on('data', (data) => { botLogs[botId] += data.toString(); });
+            npmProcess.on('close', () => {
+                botLogs[botId] += `[System] npm install finished.\n`;
+                startExecution();
+            });
+        } else {
+            botLogs[botId] += `[System] Using existing files and modules.\n`;
+            startExecution();
+        }
 
     } catch (err) {
         botLogs[botId] += `[ERROR] ${err.message}\n`;
     }
 }
 
-async function fetchBotAvatar(token) {
-    try {
-        const fetch = (...args) => import('node-fetch').then(({default: f}) => f(...args));
-        const response = await fetch('https://discord.com/api/v10/users/@me', {
-            headers: { Authorization: `Bot ${token}` }
-        });
-        const data = await response.json();
-        if (data && data.id && data.avatar) {
-            return `https://cdn.discordapp.com/avatars/${data.id}/${data.avatar}.png?size=128`;
+// פונקציית שליפת אוואטר בטוחה בלי תלות בספריות חיצוניות
+function fetchBotAvatar(token, callback) {
+    const options = {
+        hostname: 'discord.com',
+        path: '/api/v10/users/@me',
+        method: 'GET',
+        headers: {
+            'Authorization': `Bot ${token}`,
+            'User-Agent': 'DiscordBot (https://miahosting.com, v1.0)'
         }
-    } catch (e) {}
-    return null;
+    };
+
+    const req = https.request(options, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+            try {
+                const json = JSON.parse(data);
+                if (json && json.id && json.avatar) {
+                    const ext = json.avatar.startsWith('a_') ? 'gif' : 'png';
+                    const avatarUrl = `https://cdn.discordapp.com/avatars/${json.id}/${json.avatar}.${ext}?size=128`;
+                    callback(avatarUrl);
+                } else {
+                    callback(null);
+                }
+            } catch (e) {
+                callback(null);
+            }
+        });
+    });
+
+    req.on('error', () => { callback(null); });
+    req.end();
 }
 
 function startBotProcess(id, folder, runnerFile, token) {
@@ -220,13 +237,11 @@ function startBotProcess(id, folder, runnerFile, token) {
     activeProcesses[id] = child;
 
     child.stdout.on('data', (data) => {
-        const msg = data.toString();
-        botLogs[id] = (botLogs[id] || '') + msg;
+        botLogs[id] = (botLogs[id] || '') + data.toString();
     });
 
     child.stderr.on('data', (data) => {
-        const msg = data.toString();
-        botLogs[id] = (botLogs[id] || '') + `[ERROR] ${msg}`;
+        botLogs[id] = (botLogs[id] || '') + `[ERROR] ${data.toString()}`;
     });
 
     child.on('close', (code) => {
@@ -235,7 +250,6 @@ function startBotProcess(id, folder, runnerFile, token) {
     });
 }
 
-// מחיקת בוט
 app.delete('/api/bots/:id', (req, res) => {
     const botId = req.params.id;
     let bots = getBots();
