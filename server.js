@@ -20,10 +20,9 @@ app.use(session({
 app.use(express.static(path.join(__dirname, 'public')));
 
 const upload = multer({ dest: 'uploads/' });
-
-// ניהול בוטים (תומך בריבוי בוטים ללא הגבלה)
 const BOTS_FILE = path.join(__dirname, 'bots.json');
 let activeProcesses = {};
+let botLogs = {}; // שמירת לוגים לכל בוט
 
 function getBots() {
     if (!fs.existsSync(BOTS_FILE)) return [];
@@ -38,7 +37,7 @@ function saveBots(bots) {
     fs.writeFileSync(BOTS_FILE, JSON.stringify(bots, null, 2));
 }
 
-// התחברות לפאנל
+// התחברות
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     if (username === 'mia' && password === '2234') {
@@ -49,74 +48,129 @@ app.post('/api/login', (req, res) => {
     }
 });
 
-// הגנה על הדשבורד
 app.use('/dashboard.html', (req, res, next) => {
-    if (req.session.authenticated) {
-        next();
-    } else {
-        res.redirect('/login.html');
-    }
+    if (req.session.authenticated) next();
+    else res.redirect('/login.html');
 });
 
-// קבלת רשימת הבוטים
+// קבלת רשימת בוטים
 app.get('/api/bots', (req, res) => {
-    const bots = getBots();
+    const bots = getBots().map(b => ({
+        ...b,
+        status: activeProcesses[b.id] ? 'running' : 'stopped'
+    }));
     res.json(bots);
 });
 
-// העלאת והרצת בוט חדש
-app.post('/api/bots/upload', upload.single('file'), (req, res) => {
+// יצירת בוט חדש עם תיקייה
+app.post('/api/bots/create', (req, res) => {
+    const { name } = req.body;
+    if (!name) return res.json({ success: false, message: 'חסר שם' });
+
+    const botId = 'bot_' + Date.now();
+    const botFolder = path.join(__dirname, 'extracted_bots', botId);
+    fs.mkdirSync(botFolder, { recursive: true });
+
+    const newBot = { id: botId, name, folder: botFolder, mainFile: 'index.js', token: '' };
+    const bots = getBots();
+    bots.push(newBot);
+    saveBots(bots);
+
+    botLogs[botId] = `[System] Bot ${name} created successfully.\n`;
+
+    res.json({ success: true, bot: newBot });
+});
+
+// החזרת לוגים של בוט ספציפי למסך ה-Output
+app.get('/api/bots/:id/logs', (req, res) => {
+    const botId = req.params.id;
+    res.json({ logs: botLogs[botId] || 'No logs yet...' });
+});
+
+// העלאת קבצים והפעלת בוט
+app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
     try {
-        const { name, token } = req.body;
+        const botId = req.params.id;
+        const { token } = req.body;
         const file = req.file;
-        if (!file || !name || !token) {
-            return res.json({ success: false, message: 'נא למלא את כל השדות' });
+
+        const bots = getBots();
+        const botIndex = bots.findIndex(b => b.id === botId);
+        if (botIndex === -1 || !file || !token) {
+            return res.json({ success: false, message: 'נתונים חסרים' });
         }
 
-        const botId = 'bot_' + Date.now();
-        const botFolder = path.join(__dirname, 'extracted_bots', botId);
-        fs.mkdirSync(botFolder, { recursive: true });
+        const bot = bots[botIndex];
 
-        // חילוץ קובץ ה-ZIP
+        if (activeProcesses[botId]) {
+            activeProcesses[botId].kill();
+            delete activeProcesses[botId];
+        }
+
         const zip = new AdmZip(file.path);
-        zip.extractAllTo(botFolder, true);
+        zip.extractAllTo(bot.folder, true);
         fs.unlinkSync(file.path);
 
-        // מציאת קובץ ההפעלה הראשי
         let mainFile = 'index.js';
-        const packageJsonPath = path.join(botFolder, 'package.json');
+        const packageJsonPath = path.join(bot.folder, 'package.json');
         if (fs.existsSync(packageJsonPath)) {
             const pkg = JSON.parse(fs.readFileSync(packageJsonPath));
             if (pkg.main) mainFile = pkg.main;
         }
 
-        // שמירת הבוט ברשימה
-        const bots = getBots();
-        bots.push({ id: botId, name, folder: botFolder, mainFile, token });
+        // עטיפת הבוט להזרקת סטטוס miahosting אוטומטית בדיסקורד
+        const wrapperContent = `
+const { Client } = require('discord.js');
+const origLogin = Client.prototype.login;
+Client.prototype.login = function(t) {
+    this.once('ready', () => {
+        if (this.user) {
+            this.user.setPresence({
+                activities: [{ name: 'miahosting', type: 0 }],
+                status: 'online'
+            });
+        }
+    });
+    return origLogin.call(this, t || process.env.DISCORD_TOKEN);
+};
+require('./${mainFile}');
+`;
+        fs.writeFileSync(path.join(bot.folder, '_mia_runner.js'), wrapperContent);
+
+        bots[botIndex].mainFile = mainFile;
+        bots[botIndex].token = token;
         saveBots(bots);
 
-        // הרצת הבוט ברקע עם העברת הטוקן
-        startBotProcess(botId, botFolder, mainFile, token);
+        botLogs[botId] = (botLogs[botId] || '') + `[System] Deploying and starting bot...\n`;
+        startBotProcess(botId, bot.folder, '_mia_runner.js', token);
 
         res.json({ success: true });
     } catch (err) {
-        console.log(err);
-        res.json({ success: false, message: 'שגיאה בחילוץ או בהרצת הבוט' });
+        res.json({ success: false, message: 'שגיאה בהעלאה' });
     }
 });
 
-// פונקציה להפעלת תהליך הבוט
-function startBotProcess(id, folder, mainFile, token) {
+function startBotProcess(id, folder, runnerFile, token) {
     const env = { ...process.env, DISCORD_TOKEN: token, TOKEN: token };
-    const child = spawn('node', [mainFile], { cwd: folder, env });
-    
+    const child = spawn('node', [runnerFile], { cwd: folder, env });
+
     activeProcesses[id] = child;
 
-    child.stdout.on('data', (data) => console.log(`[Bot ${id}]: ${data}`));
-    child.stderr.on('data', (data) => console.error(`[Bot ${id} Error]: ${data}`));
-    
+    child.stdout.on('data', (data) => {
+        const msg = data.toString();
+        console.log(`[${id}]: ${msg}`);
+        botLogs[id] = (botLogs[id] || '') + msg;
+    });
+
+    child.stderr.on('data', (data) => {
+        const msg = data.toString();
+        console.error(`[${id} Error]: ${msg}`);
+        botLogs[id] = (botLogs[id] || '') + `[ERROR] ${msg}`;
+    });
+
     child.on('close', (code) => {
-        console.log(`Bot ${id} exited with code ${code}`);
+        const msg = `[System] Process exited with code ${code}\n`;
+        botLogs[id] = (botLogs[id] || '') + msg;
         delete activeProcesses[id];
     });
 }
@@ -132,24 +186,25 @@ app.delete('/api/bots/:id', (req, res) => {
             activeProcesses[botId].kill();
             delete activeProcesses[botId];
         }
-        // מחיקת התיקייה
         try {
             fs.rmSync(bot.folder, { recursive: true, force: true });
         } catch (e) {}
 
         bots = bots.filter(b => b.id !== botId);
         saveBots(bots);
+        delete botLogs[botId];
     }
 
     res.json({ success: true });
 });
 
-// הפעלת הבוטים הקיימים בעליית השרת מחדש
 function restoreBots() {
     const bots = getBots();
     bots.forEach(bot => {
-        if (fs.existsSync(bot.folder)) {
-            startBotProcess(bot.id, bot.folder, bot.mainFile, bot.token);
+        const runnerPath = path.join(bot.folder, '_mia_runner.js');
+        if (bot.token && fs.existsSync(runnerPath)) {
+            botLogs[bot.id] = `[System] Restoring bot on server startup...\n`;
+            startBotProcess(bot.id, bot.folder, '_mia_runner.js', bot.token);
         }
     });
 }
