@@ -272,7 +272,7 @@
     <div class="sidebar">
         <div class="logo-area">
             <h2>miahosting</h2>
-            <p id="userWelcome">משתמש מחובר</p>
+            <p id="userWelcome">שלום</p>
             <ul class="nav-links">
                 <li class="active" onclick="showHome()">🏠 מסך הבית</li>
                 <li onclick="openCreateModal()">➕ Create Bot</li>
@@ -362,7 +362,7 @@
             if (!data.loggedIn) {
                 window.location.href = '/login.html';
             } else {
-                document.getElementById('userWelcome').innerText = `مرحبا, ${data.username}`;
+                document.getElementById('userWelcome').innerText = `שלום, ${data.username}`;
             }
         }
 
