@@ -173,8 +173,17 @@
 
         .bot-card-header {
             display: flex;
-            justify-content: space-between;
             align-items: center;
+            gap: 15px;
+        }
+
+        .bot-avatar {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 2px solid var(--accent);
+            object-fit: cover;
+            background-color: #222;
         }
 
         .bot-card h3 { margin: 0; font-size: 18px; color: #fff; }
@@ -187,6 +196,7 @@
             display: inline-flex;
             align-items: center;
             gap: 5px;
+            margin-top: 5px;
         }
 
         .status-online { background: rgba(0, 255, 204, 0.12); color: var(--success); border: 1px solid rgba(0, 255, 204, 0.3); }
@@ -280,12 +290,15 @@
             <div id="botsList" class="bots-grid" style="margin-top: 20px;"></div>
         </div>
 
-        <!-- מסך ניהול בוט + אופוט חי למטה -->
+        <!-- מסך ניהול בוט -->
         <div id="manageView" style="display: none;">
-            <div class="top-bar">
-                <div>
-                    <h1 id="manageBotTitle">שם הבוט</h1>
-                    <p id="manageBotFolder" style="color: var(--text-muted); margin: 4px 0 0 0; font-size: 12px;"></p>
+            <div class="top-bar" style="align-items: center;">
+                <div style="display: flex; align-items: center; gap: 15px;">
+                    <img id="manageBotAvatar" class="bot-avatar" src="" alt="Avatar" style="width: 60px; height: 60px;">
+                    <div>
+                        <h1 id="manageBotTitle">שם הבוט</h1>
+                        <p id="manageBotFolder" style="color: var(--text-muted); margin: 4px 0 0 0; font-size: 12px;"></p>
+                    </div>
                 </div>
                 <button class="btn-secondary" onclick="showHome()">חזרה למסך הבית ⬅</button>
             </div>
@@ -301,13 +314,13 @@
                         <input type="text" id="botToken" placeholder="הדבק טוקן כאן..." required>
 
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 15px;">
-                            <button type="submit">🚀 שמור והפעל</button>
+                            <button type="submit" id="deployBtn">🚀 שמור והפעל</button>
                             <button type="button" class="btn-danger" onclick="deleteCurrentBot()">🗑️ מחק בוט</button>
                         </div>
                     </form>
                 </div>
 
-                <!-- חלון ה-Output / Console החי -->
+                <!-- חלון ה-Console החי -->
                 <div style="flex: 1; min-width: 320px; display: flex; flex-direction: column;">
                     <h3 style="margin: 0 0 5px 0; color: var(--success); font-size: 16px;">💻 Live Console Output</h3>
                     <div id="consoleOutput" class="console-box">ממתין לנתוני הפעלה מהשרת...</div>
@@ -358,16 +371,20 @@
 
             allBots.forEach(bot => {
                 const isRunning = bot.status === 'running';
+                const avatarUrl = bot.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
                 const card = document.createElement('div');
                 card.className = 'bot-card';
                 card.onclick = () => openManageBot(bot.id);
                 card.innerHTML = `
                     <div class="bot-card-header">
-                        <h3>${bot.name}</h3>
-                        <span class="status-badge ${isRunning ? 'status-online' : 'status-offline'}">
-                            <span class="dot"></span>
-                            ${isRunning ? 'פעיל 24/7' : 'ממתין לקבצים'}
-                        </span>
+                        <img src="${avatarUrl}" class="bot-avatar" alt="Bot">
+                        <div>
+                            <h3>${bot.name}</h3>
+                            <span class="status-badge ${isRunning ? 'status-online' : 'status-offline'}">
+                                <span class="dot"></span>
+                                ${isRunning ? 'פעיל 24/7' : 'ממתין לקבצים'}
+                            </span>
+                        </div>
                     </div>
                     <div style="color: var(--text-muted); font-size: 12px; margin-top: 15px; display: flex; justify-content: space-between;">
                         <span>תיקייה: /${bot.id}</span>
@@ -409,16 +426,16 @@
 
             currentBotId = id;
             document.getElementById('manageBotTitle').innerText = bot.name;
+            document.getElementById('manageBotAvatar').src = bot.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png';
             document.getElementById('manageBotFolder').innerText = `נתיב: extracted_bots/${bot.id}`;
             document.getElementById('botToken').value = bot.token || '';
             document.getElementById('botFile').value = '';
 
-            // מציג סטטוס האם כבר הועלה קובץ בעבר
             const fileStatusEl = document.getElementById('fileStatus');
             if (bot.hasFiles) {
-                fileStatusEl.innerText = '(קובץ קיים בשרת - אין חובה להעלות מחדש)';
+                fileStatusEl.innerText = '(קובץ קיים בשרת)';
             } else {
-                fileStatusEl.innerText = '(נדרש קובץ ZIP בהפעלה ראשונה)';
+                fileStatusEl.innerText = '(נדרש קובץ ZIP)';
             }
 
             document.getElementById('homeView').style.display = 'none';
@@ -449,7 +466,7 @@
             };
 
             fetchLogs();
-            consoleInterval = setInterval(fetchLogs, 2000);
+            consoleInterval = setInterval(fetchLogs, 800); // מעדכן כל 0.8 שניות לשידור חי מהיר!
         }
 
         document.getElementById('deployForm').addEventListener('submit', async (e) => {
@@ -458,22 +475,33 @@
 
             const fileInput = document.getElementById('botFile').files[0];
             const token = document.getElementById('botToken').value.trim();
+            const btn = document.getElementById('deployBtn');
 
             const formData = new FormData();
             if (fileInput) formData.append('file', fileInput);
             formData.append('token', token);
 
-            const res = await fetch(`/api/bots/${currentBotId}/deploy`, {
-                method: 'POST',
-                body: formData
-            });
+            btn.innerText = 'מעלה ומפעיל...';
+            btn.disabled = true;
 
-            const data = await res.json();
-            if (data.success) {
-                alert('הנתונים נשמרו והבוט הופעל בהצלחה!');
-                loadBots();
-            } else {
-                alert('שגיאה: ' + data.message);
+            try {
+                const res = await fetch(`/api/bots/${currentBotId}/deploy`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    alert('הפעולה התחילה! תראה את ההתקדמות בלייב בחלון ה-Console משמאל.');
+                    loadBots();
+                } else {
+                    alert('שגיאה: ' + data.message);
+                }
+            } catch (err) {
+                alert('שגיאת תקשורת עם השרת');
+            } finally {
+                btn.innerText = '🚀 שמור והפעל';
+                btn.disabled = false;
             }
         });
 
