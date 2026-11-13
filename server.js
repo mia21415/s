@@ -57,12 +57,12 @@ app.use('/dashboard.html', (req, res, next) => {
     else res.redirect('/login.html');
 });
 
-// קבלת רשימת בוטים (כולל בדיקה אם קיימים קבצים בתיקייה)
+// קבלת רשימת בוטים (בדיקה מתוקנת שמוודאה שהתיקייה מכילה קבצים)
 app.get('/api/bots', (req, res) => {
     const bots = getBots().map(b => ({
         ...b,
         status: activeProcesses[b.id] ? 'running' : 'stopped',
-        hasFiles: fs.existsSync(path.join(b.folder, '_mia_runner.js'))
+        hasFiles: fs.existsSync(b.folder) && fs.readdirSync(b.folder).length > 0
     }));
     res.json(bots);
 });
@@ -92,7 +92,7 @@ app.get('/api/bots/:id/logs', (req, res) => {
     res.json({ logs: botLogs[botId] || 'No logs yet...' });
 });
 
-// שמירת טוקן והעלאת קבצים (תומך גם בעדכון טוקן בלי להעלות קובץ מחדש)
+// שמירת טוקן והעלאת קבצים
 app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
     try {
         const botId = req.params.id;
@@ -144,15 +144,12 @@ app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
             bot.mainFile = mainFile;
         }
 
-        // שמירת ה-Token בזיכרון של השרת
         bot.token = token;
         saveBots(bots);
 
         const runnerPath = path.join(bot.folder, '_mia_runner.js');
         
-        // אם אין קובץ הרצה (למשל עוד לא הועלה ZIP מעולם), ניצור עטיפה בסיסית
-        if (!fs.existsSync(runnerPath)) {
-            const wrapperContent = `
+        const wrapperContent = `
 const { Client } = require('discord.js');
 const origLogin = Client.prototype.login;
 Client.prototype.login = function(t) {
@@ -168,10 +165,9 @@ Client.prototype.login = function(t) {
 };
 require('./${bot.mainFile}');
 `;
-            fs.writeFileSync(runnerPath, wrapperContent);
-        }
+        fs.writeFileSync(runnerPath, wrapperContent);
 
-        botLogs[botId] += `[System] Starting bot process with saved token...\n`;
+        botLogs[botId] += `[System] Starting bot process...\n`;
         startBotProcess(botId, bot.folder, '_mia_runner.js', token);
 
         res.json({ success: true });
@@ -200,7 +196,7 @@ function startBotProcess(id, folder, runnerFile, token) {
     });
 
     child.on('close', (code) => {
-        const msg = `[System] Process exited with code ${code}\n`;
+        const msg = `[System] Process exited with code {code}\n`;
         botLogs[id] = (botLogs[id] || '') + msg;
         delete activeProcesses[id];
     });
