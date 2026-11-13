@@ -19,6 +19,11 @@ app.use(session({
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// מעבר אוטומטי לעמוד ההתחברות בכניסה לכתובת הראשית
+app.get('/', (req, res) => {
+    res.redirect('/login.html');
+});
+
 const upload = multer({ dest: 'uploads/' });
 const BOTS_FILE = path.join(__dirname, 'bots.json');
 let activeProcesses = {};
@@ -114,7 +119,7 @@ app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
 
         botLogs[botId] = (botLogs[botId] || '') + `[System] Files extracted successfully.\n`;
 
-        // בדיקה והתקנה אוטומטית של package.json אם קיים
+        // התקנה אוטומטית של חבילות
         const packageJsonPath = path.join(bot.folder, 'package.json');
         let mainFile = 'index.js';
 
@@ -130,7 +135,7 @@ app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
                 botLogs[botId] += `[ERROR] Failed to run npm install.\n`;
             }
         } else {
-            botLogs[botId] += `[System] Warning: No package.json found. Installing discord.js automatically...\n`;
+            botLogs[botId] += `[System] No package.json found. Installing discord.js automatically...\n`;
             try {
                 execSync('npm init -y && npm install discord.js', { cwd: bot.folder, stdio: 'inherit' });
             } catch (e) {}
