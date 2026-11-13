@@ -79,6 +79,16 @@
             transform: translateX(-4px);
         }
 
+        .logout-btn {
+            background-color: rgba(255, 51, 102, 0.15);
+            color: var(--danger);
+            border: 1px solid rgba(255, 51, 102, 0.3);
+        }
+        .logout-btn:hover {
+            background-color: var(--danger);
+            color: #fff;
+        }
+
         .footer-brand {
             text-align: center;
             font-size: 13px;
@@ -228,7 +238,6 @@
         }
         input:focus { border-color: var(--accent); box-shadow: var(--neon-glow); }
 
-        /* Output / Console Window */
         .console-box {
             background-color: #050507;
             border: 1px solid rgba(255, 0, 127, 0.3);
@@ -246,7 +255,6 @@
             text-align: left;
         }
 
-        /* Modal */
         .modal-overlay {
             position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75);
             backdrop-filter: blur(4px); display: none; justify-content: center; align-items: center; z-index: 1000;
@@ -264,10 +272,11 @@
     <div class="sidebar">
         <div class="logo-area">
             <h2>miahosting</h2>
-            <p>Cloud Bot Hosting</p>
+            <p id="userWelcome">משתמש מחובר</p>
             <ul class="nav-links">
                 <li class="active" onclick="showHome()">🏠 מסך הבית</li>
                 <li onclick="openCreateModal()">➕ Create Bot</li>
+                <li class="logout-btn" onclick="logout()">🚪 התנתק (Logout)</li>
             </ul>
         </div>
         <div class="footer-brand">
@@ -283,7 +292,7 @@
             <div class="top-bar">
                 <div>
                     <h1>הבוטים שלי</h1>
-                    <p style="color: var(--text-muted); margin: 4px 0 0 0;">בחר בוט לניהול או צור בוט חדש</p>
+                    <p style="color: var(--text-muted); margin: 4px 0 0 0;">הבוטים המשויכים למשתמש שלך</p>
                 </div>
                 <button onclick="openCreateModal()">+ Create Bot</button>
             </div>
@@ -320,7 +329,6 @@
                     </form>
                 </div>
 
-                <!-- חלון ה-Console -->
                 <div style="flex: 1; min-width: 320px; display: flex; flex-direction: column;">
                     <h3 style="margin: 0 0 5px 0; color: var(--success); font-size: 16px;">💻 Live Console Output</h3>
                     <div id="consoleOutput" class="console-box">ממתין לנתוני הפעלה מהשרת...</div>
@@ -348,7 +356,23 @@
         let currentBotId = null;
         let consoleInterval = null;
 
+        async function checkUser() {
+            const res = await fetch('/api/user');
+            const data = await res.json();
+            if (!data.loggedIn) {
+                window.location.href = '/login.html';
+            } else {
+                document.getElementById('userWelcome').innerText = `مرحبا, ${data.username}`;
+            }
+        }
+
+        async function logout() {
+            await fetch('/api/logout', { method: 'POST' });
+            window.location.href = '/login.html';
+        }
+
         async function loadBots() {
+            await checkUser();
             const res = await fetch('/api/bots');
             allBots = await res.json();
             renderHome();
@@ -361,7 +385,7 @@
             if (allBots.length === 0) {
                 container.innerHTML = `
                     <div style="grid-column: 1 / -1; text-align: center; padding: 50px; background: var(--bg-sidebar); border-radius: 12px; border: 1px dashed #333;">
-                        <h3 style="color: var(--text-muted);">אין כרגע בוטים פעילים</h3>
+                        <h3 style="color: var(--text-muted);">אין כרגע בוטים למשתמש זה</h3>
                         <p style="color: var(--text-muted); font-size: 13px; margin-bottom: 15px;">לחץ על יצירת בוט חדש כדי להתחיל</p>
                         <button onclick="openCreateModal()">+ Create Bot</button>
                     </div>
@@ -494,7 +518,7 @@
                 if (data.success) {
                     alert('הפעולה התחילה! תראה את ההתקדמות בלייב בחלון ה-Console משמאל.');
                     loadBots();
-                    setTimeout(loadBots, 3000); // טעינה מחדש אחרי 3 שניות כדי לעדכן תמונה
+                    setTimeout(loadBots, 3000);
                 } else {
                     alert('שגיאה: ' + data.message);
                 }
