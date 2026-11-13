@@ -13,53 +13,82 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-    secret: 'mia-secret-key',
+    secret: 'mia-hosting-secure-secret',
     resave: false,
-    saveUninitialized: true
+    saveUninitialized: false,
+    cookie: { maxAge: 24 * 60 * 60 * 1000 } // תוקף סשן
 }));
 
 app.use(express.static(path.join(__dirname, 'public')));
 
+// כניסה ראשונית מפנה לעמוד ההתחברות
 app.get('/', (req, res) => {
     res.redirect('/login.html');
 });
 
 const upload = multer({ dest: 'uploads/' });
-const BOTS_FILE = path.join(__dirname, 'bots.json');
 let activeProcesses = {};
 let botLogs = {};
 
-function getBots() {
-    if (!fs.existsSync(BOTS_FILE)) return [];
+// קובץ בוטים נפרד לכל משתמש
+function getBotsFile(username) {
+    return path.join(__dirname, `bots_${username}.json`);
+}
+
+function getBots(username) {
+    const file = getBotsFile(username);
+    if (!fs.existsSync(file)) return [];
     try {
-        return JSON.parse(fs.readFileSync(BOTS_FILE));
+        return JSON.parse(fs.readFileSync(file));
     } catch {
         return [];
     }
 }
 
-function saveBots(bots) {
-    fs.writeFileSync(BOTS_FILE, JSON.stringify(bots, null, 2));
+function saveBots(username, bots) {
+    fs.writeFileSync(getBotsFile(username), JSON.stringify(bots, null, 2));
 }
 
-// התחברות (תומך גם ב-mia/2234 וגם ב-Trigger/8921)
+// התחברות
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
     if ((username === 'mia' && password === '2234') || (username === 'Trigger' && password === '8921')) {
         req.session.authenticated = true;
+        req.session.username = username;
         res.json({ success: true });
     } else {
         res.json({ success: false, message: 'שם משתמש או סיסמה שגויים' });
     }
 });
 
+// בדיקת משתמש מחובר
+app.get('/api/user', (req, res) => {
+    if (req.session && req.session.authenticated) {
+        res.json({ loggedIn: true, username: req.session.username });
+    } else {
+        res.json({ loggedIn: false });
+    }
+});
+
+// התנתקות (Logout) - מוחק את הסשן ומחייב כניסה מחדש
+app.post('/api/logout', (req, res) => {
+    req.session.destroy(() => {
+        res.json({ success: true });
+    });
+});
+
+// הגנה על הדשבורד
 app.use('/dashboard.html', (req, res, next) => {
-    if (req.session.authenticated) next();
+    if (req.session && req.session.authenticated) next();
     else res.redirect('/login.html');
 });
 
+// קבלת הבוטים של המשתמש המחובר בלבד
 app.get('/api/bots', (req, res) => {
-    const bots = getBots().map(b => ({
+    if (!req.session || !req.session.authenticated) return res.status(401).json([]);
+    const username = req.session.username;
+    
+    const bots = getBots(username).map(b => ({
         ...b,
         status: activeProcesses[b.id] ? 'running' : 'stopped',
         hasFiles: fs.existsSync(b.folder) && fs.readdirSync(b.folder).length > 0
@@ -67,18 +96,21 @@ app.get('/api/bots', (req, res) => {
     res.json(bots);
 });
 
+// יצירת בוט חדש למשתמש המחובר
 app.post('/api/bots/create', (req, res) => {
+    if (!req.session || !req.session.authenticated) return res.json({ success: false, message: 'לא מורשה' });
+    const username = req.session.username;
     const { name } = req.body;
     if (!name) return res.json({ success: false, message: 'חסר שם' });
 
-    const botId = 'bot_' + Date.now();
+    const botId = `${username}_bot_${Date.now()}`;
     const botFolder = path.join(__dirname, 'extracted_bots', botId);
     fs.mkdirSync(botFolder, { recursive: true });
 
     const newBot = { id: botId, name, folder: botFolder, mainFile: 'index.js', token: '', avatar: '' };
-    const bots = getBots();
+    const bots = getBots(username);
     bots.push(newBot);
-    saveBots(bots);
+    saveBots(username, bots);
 
     botLogs[botId] = `[System] Bot ${name} created successfully.\n`;
 
@@ -86,27 +118,31 @@ app.post('/api/bots/create', (req, res) => {
 });
 
 app.get('/api/bots/:id/logs', (req, res) => {
+    if (!req.session || !req.session.authenticated) return res.json({ logs: 'Unauthorized' });
     const botId = req.params.id;
     res.json({ logs: botLogs[botId] || 'No logs yet...' });
 });
 
+// העלאה ושמירה לבוט של המשתמש
 app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
+    if (!req.session || !req.session.authenticated) return res.json({ success: false, message: 'לא מורשה' });
+    const username = req.session.username;
     const botId = req.params.id;
     const { token } = req.body;
     const file = req.file;
 
-    const bots = getBots();
+    const bots = getBots(username);
     const botIndex = bots.findIndex(b => b.id === botId);
     if (botIndex === -1 || !token) {
         return res.json({ success: false, message: 'נתונים חסרים (חובה להזין Token)' });
     }
 
     res.json({ success: true });
-    runDeployProcess(botId, botIndex, file, token);
+    runDeployProcess(username, botId, botIndex, file, token);
 });
 
-function runDeployProcess(botId, botIndex, file, token) {
-    const bots = getBots();
+function runDeployProcess(username, botId, botIndex, file, token) {
+    const bots = getBots(username);
     const bot = bots[botIndex];
 
     if (activeProcesses[botId]) {
@@ -134,19 +170,7 @@ function runDeployProcess(botId, botIndex, file, token) {
         }
 
         bot.token = token;
-        saveBots(bots);
-
-        // שליפת תמונת פרופיל ישירות מדיסקורד באמצעות https המובנה ב-Node
-        fetchBotAvatar(token, (avatarUrl) => {
-            if (avatarUrl) {
-                const latestBots = getBots();
-                const target = latestBots.find(b => b.id === botId);
-                if (target) {
-                    target.avatar = avatarUrl;
-                    saveBots(latestBots);
-                }
-            }
-        });
+        saveBots(username, bots);
 
         const hasNodeModules = fs.existsSync(path.join(bot.folder, 'node_modules'));
 
@@ -169,6 +193,17 @@ Client.prototype.login = function(t) {
 require('./${bot.mainFile}');
 `;
             fs.writeFileSync(runnerPath, wrapperContent);
+
+            fetchBotAvatar(token, (avatarUrl) => {
+                if (avatarUrl) {
+                    const latestBots = getBots(username);
+                    const target = latestBots.find(b => b.id === botId);
+                    if (target) {
+                        target.avatar = avatarUrl;
+                        saveBots(username, latestBots);
+                    }
+                }
+            });
 
             botLogs[botId] += `[System] Starting bot process...\n`;
             startBotProcess(botId, bot.folder, '_mia_runner.js', token);
@@ -195,7 +230,6 @@ require('./${bot.mainFile}');
     }
 }
 
-// פונקציית שליפת אוואטר בטוחה בלי תלות בספריות חיצוניות
 function fetchBotAvatar(token, callback) {
     const options = {
         hostname: 'discord.com',
@@ -250,9 +284,12 @@ function startBotProcess(id, folder, runnerFile, token) {
     });
 }
 
+// מחיקת בוט של המשתמש
 app.delete('/api/bots/:id', (req, res) => {
+    if (!req.session || !req.session.authenticated) return res.json({ success: false });
+    const username = req.session.username;
     const botId = req.params.id;
-    let bots = getBots();
+    let bots = getBots(username);
     const bot = bots.find(b => b.id === botId);
 
     if (bot) {
@@ -265,25 +302,28 @@ app.delete('/api/bots/:id', (req, res) => {
         } catch (e) {}
 
         bots = bots.filter(b => b.id !== botId);
-        saveBots(bots);
+        saveBots(username, bots);
         delete botLogs[botId];
     }
 
     res.json({ success: true });
 });
 
-function restoreBots() {
-    const bots = getBots();
-    bots.forEach(bot => {
-        const runnerPath = path.join(bot.folder, '_mia_runner.js');
-        if (bot.token && fs.existsSync(runnerPath)) {
-            botLogs[bot.id] = `[System] Restoring bot on server startup...\n`;
-            startBotProcess(bot.id, bot.folder, '_mia_runner.js', bot.token);
-        }
+// שחזור בוטים של שני המשתמשים בעליית השרת
+function restoreAllBots() {
+    ['mia', 'Trigger'].forEach(username => {
+        const bots = getBots(username);
+        bots.forEach(bot => {
+            const runnerPath = path.join(bot.folder, '_mia_runner.js');
+            if (bot.token && fs.existsSync(runnerPath)) {
+                botLogs[bot.id] = `[System] Restoring bot on server startup...\n`;
+                startBotProcess(bot.id, bot.folder, '_mia_runner.js', bot.token);
+            }
+        });
     });
 }
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
-    restoreBots();
+    restoreAllBots();
 });
