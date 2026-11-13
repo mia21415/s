@@ -2,43 +2,130 @@
 <html lang="he" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>התחברות - פאנל ניהול בוטים</title>
+    <title>miahosting - התחברות לפאנל</title>
     <style>
-        /* כאן אפשר לשנות עיצובים וצבעים של עמוד הלוגין אם תרצה */
-        body { background: #1e1f22; color: #fff; font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .card { background: #2b2d31; padding: 30px; border-radius: 10px; width: 320px; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
-        h2 { margin-top: 0; text-align: center; color: #5865f2; }
-        input { width: 100%; padding: 10px; margin: 10px 0; border-radius: 5px; border: none; background: #1e1f22; color: #fff; box-sizing: border-box; }
-        button { width: 100%; padding: 10px; background: #5865f2; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-size: 16px; }
-        button:hover { background: #4752c4; }
-        #error { color: #f23f42; text-align: center; margin-top: 10px; font-size: 14px; }
+        :root {
+            --bg-main: #0b0b0e;
+            --bg-card: #121216;
+            --accent: #ff007f;
+            --accent-hover: #e60073;
+            --neon-glow: 0 0 20px rgba(255, 0, 127, 0.45);
+            --text-main: #ffffff;
+            --text-muted: #a0a0ab;
+            --danger: #ff3366;
+        }
+
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+        }
+
+        .login-card {
+            background-color: var(--bg-card);
+            padding: 40px;
+            border-radius: 16px;
+            border: 1px solid rgba(255, 0, 127, 0.3);
+            box-shadow: var(--neon-glow);
+            width: 340px;
+            text-align: center;
+        }
+
+        h2 {
+            color: var(--accent);
+            text-shadow: var(--neon-glow);
+            margin-bottom: 5px;
+        }
+
+        p {
+            color: var(--text-muted);
+            font-size: 13px;
+            margin-bottom: 25px;
+        }
+
+        input {
+            width: 100%;
+            padding: 12px;
+            margin-bottom: 15px;
+            background-color: var(--bg-main);
+            border: 1px solid #333;
+            border-radius: 8px;
+            color: #fff;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.3s, box-shadow 0.3s;
+        }
+
+        input:focus {
+            border-color: var(--accent);
+            box-shadow: var(--neon-glow);
+        }
+
+        button {
+            width: 100%;
+            background-color: var(--accent);
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 15px;
+            box-shadow: var(--neon-glow);
+            transition: background-color 0.2s;
+        }
+
+        button:hover {
+            background-color: var(--accent-hover);
+        }
+
+        #errorMsg {
+            color: var(--danger);
+            font-size: 13px;
+            margin-top: 15px;
+            display: none;
+        }
     </style>
 </head>
 <body>
-    <div class="card">
-        <h2>כניסה לפאנל</h2>
+
+    <div class="login-card">
+        <h2>miahosting</h2>
+        <p>התחבר למרכז ניהול הבוטים שלך</p>
+        
         <form id="loginForm">
-            <input type="text" id="username" placeholder="שם משתמש" required>
+            <input type="text" id="username" placeholder="שם משתמש (mia או Trigger)" required autocomplete="off">
             <input type="password" id="password" placeholder="סיסמה" required>
-            <button type="submit">התחבר</button>
-            <div id="error"></div>
+            <button type="submit">התחבר לפאנל</button>
         </form>
+
+        <div id="errorMsg">שם משתמש או סיסמה שגויים</div>
     </div>
+
     <script>
         document.getElementById('loginForm').addEventListener('submit', async (e) => {
             e.preventDefault();
-            const username = document.getElementById('username').value;
-            const password = document.getElementById('password').value;
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value.trim();
+
             const res = await fetch('/api/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
+
             const data = await res.json();
             if (data.success) {
                 window.location.href = '/dashboard.html';
             } else {
-                document.getElementById('error').innerText = data.message;
+                const errDiv = document.getElementById('errorMsg');
+                errDiv.innerText = data.message || 'שגיאה בהתחברות';
+                errDiv.style.display = 'block';
             }
         });
     </script>
