@@ -2,259 +2,159 @@ const express = require('express');
 const session = require('express-session');
 const multer = require('multer');
 const AdmZip = require('adm-zip');
-const { spawn, execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 
 const app = express();
-const PORT = 3000; // <--- כאן תוכל לשנות פורט אם תרצה (למשל ל-8080)
-
-// ==========================================
-// 📌 כאן משנים את שם המשתמש והסיסמה להתחברות לפאנל:
-const AUTH_USER = 'mia';
-const AUTH_PASS = '2234';
-// ==========================================
-
-// תיקיות אחסון
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
-const BOTS_DIR = path.join(__dirname, 'bots_storage');
-const DATA_FILE = path.join(__dirname, 'bots.json');
-
-if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
-if (!fs.existsSync(BOTS_DIR)) fs.mkdirSync(BOTS_DIR);
-if (!fs.existsSync(DATA_FILE)) fs.writeFileSync(DATA_FILE, JSON.stringify([]));
-
-// ניהול תהליכים רצים בזיכרון
-const runningProcesses = {};
+const PORT = process.env.PORT || 3000;
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(session({
-    secret: 'super-secret-bot-panel-key-9988', // <--- כאן אפשר לשנות מפתח הצפנה לסשן אם תرצה
+    secret: 'mia-secret-key',
     resave: false,
-    saveUninitialized: false
+    saveUninitialized: true
 }));
 
-const upload = multer({ dest: UPLOADS_DIR });
-
-// קריאה ושמירה של נתוני הבוטים
-function getBots() {
-    return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-}
-function saveBots(bots) {
-    fs.writeFileSync(DATA_FILE, JSON.stringify(bots, null, 2));
-}
-
-// הגדרת תיקיית הקבצים הסטטיים (HTML/CSS)
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Middleware לבדיקת התחברות
-function requireAuth(req, res, next) {
-    if (req.session && req.session.authenticated) {
-        return next();
+const upload = multer({ dest: 'uploads/' });
+
+// ניהול בוטים (תומך בריבוי בוטים ללא הגבלה)
+const BOTS_FILE = path.join(__dirname, 'bots.json');
+let activeProcesses = {};
+
+function getBots() {
+    if (!fs.existsSync(BOTS_FILE)) return [];
+    try {
+        return JSON.parse(fs.readFileSync(BOTS_FILE));
+    } catch {
+        return [];
     }
-    if (req.path.startsWith('/api/')) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
-    res.redirect('/login.html');
 }
 
-// נתיבי התחברות
+function saveBots(bots) {
+    fs.writeFileSync(BOTS_FILE, JSON.stringify(bots, null, 2));
+}
+
+// התחברות לפאנל
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    if (username === AUTH_USER && password === AUTH_PASS) {
+    if (username === 'mia' && password === '2234') {
         req.session.authenticated = true;
-        return res.json({ success: true });
+        res.json({ success: true });
+    } else {
+        res.json({ success: false, message: 'שם משתמש או סיסמה שגויים' });
     }
-    res.status(401).json({ success: false, message: 'שם משתמש או סיסמה שגויים' });
 });
 
-app.post('/api/logout', (req, res) => {
-    req.session.destroy();
-    res.json({ success: true });
+// הגנה על הדשבורד
+app.use('/dashboard.html', (req, res, next) => {
+    if (req.session.authenticated) {
+        next();
+    } else {
+        res.redirect('/login.html');
+    }
 });
 
-// הגנה על דשבורד
-app.get('/dashboard.html', requireAuth, (req, res) => {
-    res.sendFile(path.join(__dirname, 'public/dashboard.html'));
-});
-
-// פונקציית הפעלת בוט
-function startBotProcess(bot) {
-    if (runningProcesses[bot.id]) return;
-
-    const botPath = path.join(BOTS_DIR, bot.id);
-    if (!fs.existsSync(botPath)) return;
-
-    // זיהוי קובץ ההפעלה הראשי של הבוט
-    let entryFile = 'index.js'; // <--- ברירת המחדל היא index.js
-    const pkgPath = path.join(botPath, 'package.json');
-    if (fs.existsSync(pkgPath)) {
-        try {
-            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
-            if (pkg.main) entryFile = pkg.main; // אם מוגדר main ב-package.json של הבוט, השרת ייקח משם את הקובץ
-        } catch (e) {}
-    }
-
-    if (!fs.existsSync(path.join(botPath, entryFile))) {
-        const jsFiles = fs.readdirSync(botPath).filter(f => f.endsWith('.js'));
-        if (jsFiles.length > 0) entryFile = jsFiles[0];
-    }
-
-    // העברת ה-Token דרך משתני סביבה לבוט
-    const envVars = { ...process.env, TOKEN: bot.token, DISCORD_TOKEN: bot.token };
-    
-    const child = spawn('node', [entryFile], {
-        cwd: botPath,
-        env: envVars,
-        stdio: ['ignore', 'pipe', 'pipe']
-    });
-
-    bot.logs = bot.logs || [];
-    const addLog = (data) => {
-        const line = `[${new Date().toLocaleTimeString()}] ${data.toString().trim()}`;
-        bot.logs.push(line);
-        if (bot.logs.length > 50) bot.logs.shift(); // שומר עד 50 לוגים אחרונים לכל בוט
-    };
-
-    child.stdout.on('data', addLog);
-    child.stderr.on('data', addLog);
-
-    child.on('exit', (code) => {
-        addLog(`הבוט נעצר (קוד יציאה: ${code})`);
-        delete runningProcesses[bot.id];
-        const bots = getBots();
-        const b = bots.find(x => x.id === bot.id);
-        if (b && b.shouldRun) {
-            setTimeout(() => startBotProcess(b), 5000); // הפעלה מחדש אוטומטית אחרי 5 שניות אם קרס
-        }
-    });
-
-    runningProcesses[bot.id] = { process: child, logs: bot.logs };
-}
-
-function stopBotProcess(botId) {
-    if (runningProcesses[botId]) {
-        runningProcesses[botId].process.kill('SIGTERM');
-        delete runningProcesses[botId];
-    }
-}
-
-// API: קבלת רשימת בוטים
-app.get('/api/bots', requireAuth, (req, res) => {
-    const bots = getBots().map(b => ({
-        ...b,
-        isRunning: !!runningProcesses[b.id],
-        logs: runningProcesses[b.id] ? runningProcesses[b.id].logs : (b.logs || [])
-    }));
+// קבלת רשימת הבוטים
+app.get('/api/bots', (req, res) => {
+    const bots = getBots();
     res.json(bots);
 });
 
-// API: יצירת בוט חדש
-app.post('/api/bots', requireAuth, upload.array('files'), (req, res) => {
+// העלאת והרצת בוט חדש
+app.post('/api/bots/upload', upload.single('file'), (req, res) => {
     try {
         const { name, token } = req.body;
-        const files = req.files;
-
-        if (!name || !token || !files || files.length === 0) {
-            return res.status(400).json({ error: 'חסרים פרטים או קבצים' });
+        const file = req.file;
+        if (!file || !name || !token) {
+            return res.json({ success: false, message: 'נא למלא את כל השדות' });
         }
 
         const botId = 'bot_' + Date.now();
-        const botPath = path.join(BOTS_DIR, botId);
-        fs.mkdirSync(botPath, { recursive: true });
+        const botFolder = path.join(__dirname, 'extracted_bots', botId);
+        fs.mkdirSync(botFolder, { recursive: true });
 
-        for (const file of files) {
-            if (file.originalname.endsWith('.zip')) {
-                const zip = new AdmZip(file.path);
-                zip.extractAllTo(botPath, true);
-                
-                const extractedItems = fs.readdirSync(botPath);
-                if (extractedItems.length === 1 && fs.statSync(path.join(botPath, extractedItems[0])).isDirectory()) {
-                    const innerDir = path.join(botPath, extractedItems[0]);
-                    fs.readdirSync(innerDir).forEach(item => {
-                        fs.renameSync(path.join(innerDir, item), path.join(botPath, item));
-                    });
-                    fs.rmdirSync(innerDir);
-                }
-            } else {
-                fs.renameSync(file.path, path.join(botPath, file.originalname));
-            }
-            if (fs.existsSync(file.path)) fs.unlinkSync(file.path);
+        // חילוץ קובץ ה-ZIP
+        const zip = new AdmZip(file.path);
+        zip.extractAllTo(botFolder, true);
+        fs.unlinkSync(file.path);
+
+        // מציאת קובץ ההפעלה הראשי
+        let mainFile = 'index.js';
+        const packageJsonPath = path.join(botFolder, 'package.json');
+        if (fs.existsSync(packageJsonPath)) {
+            const pkg = JSON.parse(fs.readFileSync(packageJsonPath));
+            if (pkg.main) mainFile = pkg.main;
         }
 
-        fs.writeFileSync(path.join(botPath, '.env'), `TOKEN=${token}\nDISCORD_TOKEN=${token}\n`);
-
-        if (fs.existsSync(path.join(botPath, 'package.json'))) {
-            try {
-                execSync('npm install --omit=dev', { cwd: botPath, stdio: 'ignore' });
-            } catch (err) {
-                console.error('שגיאה בהתקנת חבילות לבוט:', err);
-            }
-        }
-
-        const newBot = {
-            id: botId,
-            name,
-            token,
-            shouldRun: true,
-            createdAt: new Date().toISOString()
-        };
-
+        // שמירת הבוט ברשימה
         const bots = getBots();
-        bots.push(newBot);
+        bots.push({ id: botId, name, folder: botFolder, mainFile, token });
         saveBots(bots);
 
-        startBotProcess(newBot);
-        res.json({ success: true, bot: newBot });
-    } catch (error) {
-        console.error(error);
-        res.status(500).json({ error: 'שגיאה ביצירת הבוט' });
+        // הרצת הבוט ברקע עם העברת הטוקן
+        startBotProcess(botId, botFolder, mainFile, token);
+
+        res.json({ success: true });
+    } catch (err) {
+        console.log(err);
+        res.json({ success: false, message: 'שגיאה בחילוץ או בהרצת הבוט' });
     }
 });
 
-// API: הפעלה / כיבוי בוט
-app.post('/api/bots/:id/toggle', requireAuth, (req, res) => {
-    const bots = getBots();
-    const bot = bots.find(b => b.id === req.params.id);
-    if (!bot) return res.status(404).json({ error: 'בוט לא נמצא' });
+// פונקציה להפעלת תהליך הבוט
+function startBotProcess(id, folder, mainFile, token) {
+    const env = { ...process.env, DISCORD_TOKEN: token, TOKEN: token };
+    const child = spawn('node', [mainFile], { cwd: folder, env });
+    
+    activeProcesses[id] = child;
 
-    if (runningProcesses[bot.id]) {
-        bot.shouldRun = false;
-        saveBots(bots);
-        stopBotProcess(bot.id);
-    } else {
-        bot.shouldRun = true;
-        saveBots(bots);
-        startBotProcess(bot);
-    }
-    res.json({ success: true });
-});
+    child.stdout.on('data', (data) => console.log(`[Bot ${id}]: ${data}`));
+    child.stderr.on('data', (data) => console.error(`[Bot ${id} Error]: ${data}`));
+    
+    child.on('close', (code) => {
+        console.log(`Bot ${id} exited with code ${code}`);
+        delete activeProcesses[id];
+    });
+}
 
-// API: מחיקת בוט
-app.delete('/api/bots/:id', requireAuth, (req, res) => {
+// מחיקת בוט
+app.delete('/api/bots/:id', (req, res) => {
+    const botId = req.params.id;
     let bots = getBots();
-    const botIndex = bots.findIndex(b => b.id === req.params.id);
-    if (botIndex === -1) return res.status(404).json({ error: 'בוט לא נמצא' });
+    const bot = bots.find(b => b.id === botId);
 
-    const botId = bots[botIndex].id;
-    stopBotProcess(botId);
+    if (bot) {
+        if (activeProcesses[botId]) {
+            activeProcesses[botId].kill();
+            delete activeProcesses[botId];
+        }
+        // מחיקת התיקייה
+        try {
+            fs.rmSync(bot.folder, { recursive: true, force: true });
+        } catch (e) {}
 
-    const botPath = path.join(BOTS_DIR, botId);
-    if (fs.existsSync(botPath)) {
-        fs.rmSync(botPath, { recursive: true, force: true });
+        bots = bots.filter(b => b.id !== botId);
+        saveBots(bots);
     }
 
-    bots.splice(botIndex, 1);
-    saveBots(bots);
     res.json({ success: true });
 });
 
-// הפעלה אוטומטית של בוטים שהוגדרו לפעול בזמן עליית השרת
-getBots().forEach(bot => {
-    if (bot.shouldRun) startBotProcess(bot);
-});
+// הפעלת הבוטים הקיימים בעליית השרת מחדש
+function restoreBots() {
+    const bots = getBots();
+    bots.forEach(bot => {
+        if (fs.existsSync(bot.folder)) {
+            startBotProcess(bot.id, bot.folder, bot.mainFile, bot.token);
+        }
+    });
+}
 
 app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
+    restoreBots();
 });
