@@ -4,7 +4,7 @@ const multer = require('multer');
 const AdmZip = require('adm-zip');
 const fs = require('fs');
 const path = require('path');
-const { spawn } = require('child_process');
+const { spawn, execSync } = require('child_process');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -22,7 +22,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 const upload = multer({ dest: 'uploads/' });
 const BOTS_FILE = path.join(__dirname, 'bots.json');
 let activeProcesses = {};
-let botLogs = {}; // שמירת לוגים לכל בוט
+let botLogs = {};
 
 function getBots() {
     if (!fs.existsSync(BOTS_FILE)) return [];
@@ -81,13 +81,13 @@ app.post('/api/bots/create', (req, res) => {
     res.json({ success: true, bot: newBot });
 });
 
-// החזרת לוגים של בוט ספציפי למסך ה-Output
+// לוגים חיים
 app.get('/api/bots/:id/logs', (req, res) => {
     const botId = req.params.id;
     res.json({ logs: botLogs[botId] || 'No logs yet...' });
 });
 
-// העלאת קבצים והפעלת בוט
+// העלאת קבצים, התקנת חבילות אוטומטית והפעלת הבוט
 app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
     try {
         const botId = req.params.id;
@@ -107,18 +107,36 @@ app.post('/api/bots/:id/deploy', upload.single('file'), (req, res) => {
             delete activeProcesses[botId];
         }
 
+        // חילוץ ה-ZIP
         const zip = new AdmZip(file.path);
         zip.extractAllTo(bot.folder, true);
         fs.unlinkSync(file.path);
 
-        let mainFile = 'index.js';
+        botLogs[botId] = (botLogs[botId] || '') + `[System] Files extracted successfully.\n`;
+
+        // בדיקה והתקנה אוטומטית של package.json אם קיים
         const packageJsonPath = path.join(bot.folder, 'package.json');
+        let mainFile = 'index.js';
+
         if (fs.existsSync(packageJsonPath)) {
             const pkg = JSON.parse(fs.readFileSync(packageJsonPath));
             if (pkg.main) mainFile = pkg.main;
+
+            botLogs[botId] += `[System] Running npm install for bot dependencies...\n`;
+            try {
+                execSync('npm install', { cwd: bot.folder, stdio: 'inherit' });
+                botLogs[botId] += `[System] Dependencies installed successfully!\n`;
+            } catch (installErr) {
+                botLogs[botId] += `[ERROR] Failed to run npm install.\n`;
+            }
+        } else {
+            botLogs[botId] += `[System] Warning: No package.json found. Installing discord.js automatically...\n`;
+            try {
+                execSync('npm init -y && npm install discord.js', { cwd: bot.folder, stdio: 'inherit' });
+            } catch (e) {}
         }
 
-        // עטיפת הבוט להזרקת סטטוס miahosting אוטומטית בדיסקורד
+        // עטיפת הבוט להזרקת סטטוס miahosting אוטומטית
         const wrapperContent = `
 const { Client } = require('discord.js');
 const origLogin = Client.prototype.login;
@@ -141,11 +159,12 @@ require('./${mainFile}');
         bots[botIndex].token = token;
         saveBots(bots);
 
-        botLogs[botId] = (botLogs[botId] || '') + `[System] Deploying and starting bot...\n`;
+        botLogs[botId] += `[System] Starting bot process...\n`;
         startBotProcess(botId, bot.folder, '_mia_runner.js', token);
 
         res.json({ success: true });
     } catch (err) {
+        console.error(err);
         res.json({ success: false, message: 'שגיאה בהעלאה' });
     }
 });
