@@ -5,15 +5,16 @@
     <title>miahosting - פאנל ניהול בוטים</title>
     <style>
         :root {
-            --bg-main: #1e1f22;
-            --bg-sidebar: #2b2d31;
-            --bg-card: #313338;
-            --accent: #5865f2;
-            --accent-hover: #4752c4;
-            --text-main: #dbdee1;
-            --text-muted: #949ba4;
-            --danger: #f23f42;
-            --success: #23a55a;
+            --bg-main: #0b0b0e;
+            --bg-sidebar: #121216;
+            --bg-card: #18181f;
+            --accent: #ff007f;
+            --accent-hover: #e60073;
+            --neon-glow: 0 0 15px rgba(255, 0, 127, 0.4);
+            --text-main: #ffffff;
+            --text-muted: #a0a0ab;
+            --danger: #ff3366;
+            --success: #00ffcc;
         }
 
         body {
@@ -34,14 +35,17 @@
             flex-direction: column;
             justify-content: space-between;
             padding: 20px;
-            box-shadow: 4px 0 15px rgba(0,0,0,0.2);
+            border-left: 1px solid rgba(255, 0, 127, 0.2);
+            box-shadow: 5px 0 20px rgba(0,0,0,0.5);
             animation: slideInLeft 0.5s ease-out;
         }
 
         .logo-area h2 {
             color: var(--accent);
+            text-shadow: var(--neon-glow);
             margin: 0 0 5px 0;
-            font-size: 22px;
+            font-size: 24px;
+            letter-spacing: 1px;
         }
 
         .logo-area p {
@@ -60,9 +64,11 @@
             padding: 12px 15px;
             border-radius: 8px;
             background-color: var(--bg-card);
-            color: #fff;
+            color: var(--text-main);
             font-weight: bold;
             cursor: pointer;
+            border: 1px solid rgba(255, 0, 127, 0.3);
+            box-shadow: var(--neon-glow);
             transition: all 0.3s ease;
         }
 
@@ -70,13 +76,14 @@
             text-align: center;
             font-size: 13px;
             color: var(--text-muted);
-            border-top: 1px solid #3f4147;
+            border-top: 1px solid #222;
             padding-top: 15px;
         }
 
         .footer-brand span {
             color: var(--accent);
             font-weight: bold;
+            text-shadow: var(--neon-glow);
         }
 
         /* Main Content */
@@ -87,39 +94,47 @@
             animation: fadeIn 0.6s ease-in-out;
         }
 
-        h1 {
-            margin-top: 0;
-            font-size: 26px;
+        h1, h3 {
+            color: var(--text-main);
+            text-shadow: 0 0 10px rgba(255,255,255,0.1);
         }
 
         .card {
             background-color: var(--bg-sidebar);
             padding: 25px;
             border-radius: 12px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            border: 1px solid rgba(255, 0, 127, 0.2);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.4);
             margin-bottom: 25px;
-            transition: transform 0.3s ease;
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
         }
 
         .card:hover {
             transform: translateY(-3px);
+            box-shadow: 0 12px 30px rgba(255, 0, 127, 0.15);
+        }
+
+        label {
+            font-size: 14px;
+            color: var(--text-muted);
         }
 
         input[type="file"], input[type="text"] {
             width: 100%;
             padding: 12px;
-            margin: 10px 0 20px 0;
+            margin: 8px 0 20px 0;
             background-color: var(--bg-main);
-            border: 1px solid #3f4147;
+            border: 1px solid #333;
             border-radius: 8px;
             color: #fff;
             box-sizing: border-box;
             outline: none;
-            transition: border-color 0.3s;
+            transition: border-color 0.3s, box-shadow 0.3s;
         }
 
         input:focus {
             border-color: var(--accent);
+            box-shadow: var(--neon-glow);
         }
 
         button {
@@ -131,11 +146,13 @@
             cursor: pointer;
             font-weight: bold;
             font-size: 15px;
-            transition: background-color 0.2s, transform 0.1s;
+            box-shadow: var(--neon-glow);
+            transition: background-color 0.2s, transform 0.1s, box-shadow 0.2s;
         }
 
         button:hover {
             background-color: var(--accent-hover);
+            box-shadow: 0 0 20px rgba(255, 0, 127, 0.7);
         }
 
         button:active {
@@ -154,9 +171,16 @@
             background-color: var(--bg-card);
             border-radius: 10px;
             padding: 20px;
-            border: 1px solid #3f4147;
+            border: 1px solid rgba(255, 0, 127, 0.3);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
             position: relative;
             animation: popUp 0.4s ease-out;
+            transition: transform 0.2s;
+        }
+
+        .bot-card:hover {
+            transform: translateY(-3px);
+            border-color: var(--accent);
         }
 
         .bot-status {
@@ -166,7 +190,7 @@
             background-color: var(--success);
             border-radius: 50%;
             margin-left: 8px;
-            box-shadow: 0 0 8px var(--success);
+            box-shadow: 0 0 10px var(--success);
         }
 
         .bot-actions {
@@ -177,9 +201,11 @@
 
         .btn-danger {
             background-color: var(--danger);
+            box-shadow: 0 0 10px rgba(255, 51, 102, 0.4);
         }
         .btn-danger:hover {
-            background-color: #d83c3e;
+            background-color: #e02855;
+            box-shadow: 0 0 15px rgba(255, 51, 102, 0.7);
         }
 
         /* Animations */
@@ -205,7 +231,7 @@
     <div class="sidebar">
         <div class="logo-area">
             <h2>miahosting</h2>
-            <p>פאנל ניהול בוטים חכם</p>
+            <p>פאנל ניהול בוטים נეon</p>
             <ul class="nav-links">
                 <li>🏠 מסך הבית</li>
             </ul>
@@ -221,10 +247,10 @@
         
         <!-- טופס העלאת בוט חדש -->
         <div class="card">
-            <h3>העלאת בוט חדש (קובץ ZIP + Token)</h3>
+            <h3>העלאת בוט חדש (כמה שתרצה!)</h3>
             <form id="uploadForm">
                 <label>שם הבוט:</label>
-                <input type="text" id="botName" placeholder="לדוגמה: MyBot" required>
+                <input type="text" id="botName" placeholder="לדוגמה: MyBot1, MyBot2..." required>
                 
                 <label>קובץ הבוט (ZIP שכולל package.json וקובץ הפעלה):</label>
                 <input type="file" id="botFile" accept=".zip" required>
@@ -237,7 +263,7 @@
         </div>
 
         <!-- רשימת הבוטים הפעילים -->
-        <h3>בוטים פעילים במערכת</h3>
+        <h3>בוטים פעילים במערכת (ללא הגבלה)</h3>
         <div id="botsList" class="bots-grid">
             <!-- הבוטים יטענו לכאן אוטומטית -->
         </div>
@@ -260,8 +286,8 @@
                 card.className = 'bot-card';
                 card.innerHTML = `
                     <div style="display: flex; align-items: center; justify-content: space-between;">
-                        <h4 style="margin: 0; font-size: 18px;">${bot.name}</h4>
-                        <span><span class="bot-status"></span> פעיל 24/7</span>
+                        <h4 style="margin: 0; font-size: 18px; color: var(--text-main);">${bot.name}</h4>
+                        <span style="font-size: 13px; color: var(--success);"><span class="bot-status"></span> פעיל 24/7</span>
                     </div>
                     <div class="bot-actions">
                         <button class="btn-danger" onclick="deleteBot('${bot.id}')">מחק והפסק</button>
