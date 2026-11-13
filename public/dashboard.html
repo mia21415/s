@@ -294,8 +294,8 @@
                 <div class="manage-card" style="flex: 1; min-width: 320px;">
                     <h3 style="margin-top: 0; color: var(--accent);">הגדרות בוט והעלאת קבצים</h3>
                     <form id="deployForm">
-                        <label>קובץ הבוט (ZIP):</label>
-                        <input type="file" id="botFile" accept=".zip" required>
+                        <label>קובץ הבוט (ZIP): <span id="fileStatus" style="color: var(--success); font-size: 12px;"></span></label>
+                        <input type="file" id="botFile" accept=".zip">
 
                         <label>Discord Bot Token:</label>
                         <input type="text" id="botToken" placeholder="הדבק טוקן כאן..." required>
@@ -413,6 +413,14 @@
             document.getElementById('botToken').value = bot.token || '';
             document.getElementById('botFile').value = '';
 
+            // מציג סטטוס האם כבר הועלה קובץ בעבר
+            const fileStatusEl = document.getElementById('fileStatus');
+            if (bot.hasFiles) {
+                fileStatusEl.innerText = '(קובץ קיים בשרת - אין חובה להעלות מחדש)';
+            } else {
+                fileStatusEl.innerText = '(נדרש קובץ ZIP בהפעלה ראשונה)';
+            }
+
             document.getElementById('homeView').style.display = 'none';
             document.getElementById('manageView').style.display = 'block';
 
@@ -452,7 +460,7 @@
             const token = document.getElementById('botToken').value.trim();
 
             const formData = new FormData();
-            formData.append('file', fileInput);
+            if (fileInput) formData.append('file', fileInput);
             formData.append('token', token);
 
             const res = await fetch(`/api/bots/${currentBotId}/deploy`, {
@@ -462,7 +470,8 @@
 
             const data = await res.json();
             if (data.success) {
-                alert('הבוט הועלה והופעל בהצלחה!');
+                alert('הנתונים נשמרו והבוט הופעל בהצלחה!');
+                loadBots();
             } else {
                 alert('שגיאה: ' + data.message);
             }
